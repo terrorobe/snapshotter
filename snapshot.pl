@@ -110,7 +110,7 @@ sub remove_snapshots {
     for my $device (keys %lvs) {
         # Remove all volumes whose names begin with our prefix
         # This sounds more dangerous than it is; the --force option is needed because
-        # snapshot devices are always active. Even with --force, lvremove won't remove mounted
+        # snapshot devices are always active, but even with --force, lvremove won't remove mounted
         # volumes
         if ($device =~ m{/$snapshot_lv_prefix}) {
             print "lvremove --force $device\n";
@@ -205,8 +205,15 @@ sub collect_lvm_information {
         for my $device (keys %templv) {
             $templv{$device}->{'vg'} = $vg;
 
-            # We only need the name of the logical volume here, not the full path.
-            $templv{$device}->{'snapshotname'} = $snapshot_lv_prefix . (split /\//, $device)[-1];
+            my $lvname = (split /\//, $device)[-1];
+
+            if ($mode eq 'snapshot') {
+                croak "LV Name $device collides with LV snapshot prefix $snapshot_lv_prefix." . 
+                    "Aborting to prevent possible data loss" if ($lvname =~ m/^$snapshot_lv_prefix/);
+
+                # We only need the name of the logical volume here, not the full path.
+                $templv{$device}->{'snapshotname'} = $snapshot_lv_prefix . $lvname;
+            }
         }
 
         # Add the LVs from this VG to the global list of LVs via an hash slice.

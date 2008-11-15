@@ -15,6 +15,7 @@ my %vgs;
 my %lvs;
 my %fs;
 my %snapshot_filesystems;
+my @command_queue;
 my @invoked_commands;
 
 my $snapshot_path;
@@ -24,6 +25,7 @@ my $excluded_mountpoints;
 my $excluded_volumes;
 my $snapshot_size_percentage;
 my $dry_run;
+my $verbose;
 my $options;
 my $help;
 
@@ -35,6 +37,7 @@ GetOptions (
         'excluded-volumes:s' => \$excluded_volumes,
         'snapshot-size:s' => \$snapshot_size_percentage,
         'dry-run:s' => \$dry_run,
+        'verbose:s' => \$verbose,
         'options' => \$options,
         'help' => \$help,
         ) or pod2usage(-verbose => 0);
@@ -82,10 +85,67 @@ if ($mode eq 'snapshot') {
     pod2usage(-verbose => 0);
 }
 
-#print Dumper \%snapshot_filesystems;
-#print Dumper \%vgs;
-#print Dumper \%lvs;
+run_queue();
 
+
+sub report_error {
+    my ($rc, $command, $output) = @_;
+
+    my $invoked = join("\n", @invoked_commands);
+    my $outstanding = join("\n", @command_queue);
+
+    my $message = <<EOF;
+
+Error!
+
+Command "$command" returned with RC $rc.
+
+Output was:
+---
+$output
+---
+
+Completed commands:
+$invoked
+
+Outstanding commands:
+$command
+$outstanding
+
+EOF
+
+    print STDERR $message;
+
+}
+
+sub run_queue {
+
+    my $command;
+    my $output;
+
+    while ($command = shift @command_queue) {
+
+        if (defined($dry_run)) {
+            print "$command\n";
+        } 
+        else {
+            print "Running: $command\n" if ($verbose);
+            $output = qx/$command 2>&1/;
+            my $rc = $? >> 8;
+            if ($rc != 0) {
+                report_error($rc, $command, $output);
+                exit 1;
+            }
+        }
+        push @invoked_commands, $command;
+    }
+}
+
+sub queue_command {
+    my ($command) = @_;
+
+    push @command_queue, $command;
+}
 
 sub unmount_snapshots {
 
@@ -101,7 +161,7 @@ sub unmount_snapshots {
     # We need to unmount the filesystems in reverse order to prevent busy filesystems.
     for my $device (reverse sort by_mountpoint_length keys %snapshot_filesystems) {
         my $mountpoint = $snapshot_filesystems{$device}->{'mountpoint'};
-        print "umount $mountpoint\n";
+        queue_command("umount $mountpoint");
     }
 }
 
@@ -113,20 +173,20 @@ sub remove_snapshots {
         # snapshot devices are always active, but even with --force, lvremove won't remove mounted
         # volumes
         if ($device =~ m{/$snapshot_lv_prefix}) {
-            print "lvremove --force $device\n";
+            queue_command("lvremove --force $device");
         }
     }
 }
 
 sub remove_mount_directory {
-    rmdir $snapshot_path or croak "Failed to remove Snapshot Path $snapshot_path: $!";
+    queue_command("rmdir $snapshot_path") if (-d $snapshot_path);
 }
 
 sub create_mount_directory {
 
     croak "Snapshot Path $snapshot_path already exists" if (-d $snapshot_path);
 
-    mkdir $snapshot_path or croak "Failed to create Snapshot Path $snapshot_path: $!";
+    queue_command("mkdir $snapshot_path");
 }
 
 sub create_snapshots {
@@ -135,7 +195,7 @@ sub create_snapshots {
         if ($snapshot_filesystems{$device}->{'mount_type'} eq 'lvm') {
             my $space_needed = $lvs{$device}->{'space_needed'};
             my $snapname = $lvs{$device}->{'snapshotname'};
-            print "lvcreate -s -l $space_needed -n $snapname $device\n";
+            queue_command("lvcreate -s -l $space_needed -n $snapname $device");
         }
     }
 }
@@ -154,11 +214,11 @@ sub mount_snapshots {
             my $vg = $lvs{$device}->{'vg'};
             my $snapname = $lvs{$device}->{'snapshotname'};
 
-            print "mount /dev/$vg/$snapname $snapshot_path$mountpoint\n";
+            queue_command("mount /dev/$vg/$snapname $snapshot_path$mountpoint");
         } 
         elsif ($mount_type eq 'bind') {
 
-            print "mount --bind $mountpoint $snapshot_path$mountpoint\n";
+            queue_command("mount --bind $mountpoint $snapshot_path$mountpoint");
         }
         else {
             croak "Unknown mount type $mount_type";
@@ -323,6 +383,7 @@ snapshotter.pl { snapshot | teardown } path [options]
       --excluded-volumes        Logical Volumes which should be excluded from the tree
       --snapshot-size           Size of snapshot volumes in percent (relative to source volume).
       --dry-run                 Prints all commands to stdout instead of invoking them
+      --verbose                 Shows commands during execution
       --options                 Show description for options
       --help                    Show complete documentation
 

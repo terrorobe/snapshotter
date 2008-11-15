@@ -21,7 +21,7 @@ my %lvs;
 my %fs;
 my %snapshot_filesystems;
 
-my $mode = 'snapshot';
+my $mode = 'teardown';
 
 
 collect_lvm_information();
@@ -52,7 +52,9 @@ print Dumper \%lvs;
 
 sub create_mount_directory {
 
+    croak "Snapshot Path $snapshot_path already exists" if (-d $snapshot_path);
 
+    mkdir $snapshot_path or croak "Failed to create Snapshot Path $snapshot_path: $!";
 }
 
 sub create_snapshots {

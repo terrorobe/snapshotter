@@ -47,6 +47,9 @@ pod2usage(-verbose => 2) if $help;
 my $mode;
 ($mode, $snapshot_path) = @ARGV;
 
+# Clean up any trailing slashes autocomplete might have gifted us
+$snapshot_path =~ s/\/+$//g;
+
 pod2usage unless $snapshot_path;
 $snapshot_lv_prefix ||= 'SNAP';
 $included_filesystems ||= join(',', qw(ext2 ext3 xfs reiserfs));
@@ -130,7 +133,7 @@ sub run_queue {
             print "$command\n";
         } 
         else {
-            print "Running: $command\n" if ($verbose);
+            print "Running: $command\n" if (defined($verbose));
             $output = qx/$command 2>&1/;
             my $rc = $? >> 8;
             if ($rc != 0) {
@@ -286,7 +289,7 @@ sub collect_lvm_information {
 
         # Add the LVs from this VG to the global list of LVs via an hash slice.
         @lvs{keys %templv} = values %templv;
-    }
+    } 
 }
 
 

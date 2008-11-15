@@ -5,25 +5,52 @@ use strict;
 use Sys::Filesystem ();
 use Linux::LVM;
 use POSIX qw(ceil);
-use Getopt::Compact;
+use Getopt::Long;
+use Pod::Usage;
 
 use Data::Dumper;
 use Carp;
 
-my %excluded_mountpoints;
-my %excluded_volumes = ('/dev/raid5/backup' => 1);
-my %included_filesystems = ('ext3' => 1);
-my $snapshot_size_percentage = '10';
-my $snapshot_path = '/mnt/snapbackup';
-my $snapshot_lv_prefix = 'SNAP';
+my $snapshot_path;
+my $snapshot_lv_prefix;
+my @included_filesystems = qw(ext3);
+my @excluded_mountpoints;
+my @excluded_volumes;
+my $snapshot_size_percentage;
 
 my %vgs;
 my %lvs;
 my %fs;
 my %snapshot_filesystems;
+my $help;
 
-my $mode = 'teardown';
 
+GetOptions (
+        'path:s' => \$snapshot_path,
+        'lvprefix:s' => \$snapshot_lv_prefix,
+        'fstype:s' => \@included_filesystems,
+        'excluded-mountpoint:s' => \@excluded_mountpoints,
+        'excluded-volumes:s' => \@excluded_volumes,
+        'snapshot-size:s' => \$snapshot_size_percentage,
+        'help' => \$help,
+        ) or pod2usage(1);
+
+pod2usage(-verbose => 2) if $help;
+
+$snapshot_path ||= '/mnt/snapshotter';
+$snapshot_lv_prefix ||= 'SNAP';
+$snapshot_size_percentage ||= 10;
+@included_filesystems = qw(ext3) unless @included_filesystems;
+
+my %excluded_mountpoints = map { $_ => 1 } @excluded_mountpoints;
+my %excluded_volumes = map { $_ => 1 } @excluded_volumes;
+my %included_filesystems = map { $_ => 1 } @included_filesystems;
+
+my $mode;
+
+print Dumper \@ARGV;
+
+exit;
 
 collect_lvm_information();
 collect_filesystems();
@@ -243,3 +270,91 @@ sub translate_lvm_path {
 
     return $newpath;
 }
+
+__END__
+
+=head1 NAME
+
+snapshotter - A LVM-based filesystem tree snapshot creator
+
+=head1 SYNOPSIS
+
+snapshotter.pl { snapshot | teardown } [path] [options]
+
+
+   Options:
+      --prefix                  Prefix for snapshot volume names.
+      --fstype                  Filesystem types which should be snapshotted.
+      --excluded-mountpoints    Mountpoints which should be excluded from the tree
+      --excluded-volumes        Logical Volumes which should be excluded from the tree
+      --snapshot-size           Size of snapshot volumes in percent (relative to source volume).
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<snapshot>
+
+Run in B<snapshot> mode. See the long help for further information.
+
+=item B<teardown>
+
+Run in B<teardown> mode. See the long help for further information.
+
+=item B<path>
+
+Path for the snapshot tree. The given directory must not exist. This is a safety precaution so that one can't accidentally mount the snapshots over an existing part of the filesystem.
+
+=item B<--prefix>
+
+Prefix for snapshot volume names. The prefix must not be used for any existing Logical Volumes.
+
+B<Default>: SNAP
+
+=item B<--fstype>
+
+List of filesystems which are considered for the snapshot tree.
+
+B<Default>: B<ext2>, B<ext3>, B<xfs>, B<reiserfs>
+
+=item B<--excluded-mountpoints>
+
+Mountpoints which shouldn't get recreated in the snapshot tree.
+
+=item B<--excluded-volumes>
+
+Logical volumes which shouldn't get snapshotted and mounted in the snapshot tree. Names must be fully qualified, e.g. /dev/VGxy/LVzzy
+
+=item B<--snapshot-size>
+
+Defines how large the snapshot volumes will be in relation to it's source volume. If the required space exceeds the amount of free space in the Volume Group, no snapshots will be created and the program aborts.
+
+The snapshot size should be choosen so that it can accomodate all changes on the source filesystem during the backup run; if a snapshot volume gets "full", the snapshot will become unavailable.
+
+B<Default>: 10%
+
+=back
+
+=head1 DESCRIPTION
+
+B<snapshotter> is a LVM and mount wrapper which aids system administrators in creating consistent backups of their servers.
+
+After running it in B<snapshot> mode, a complete copy of the servers local filesystems will be present in B<path>.
+
+Invoking it in B<teardown> mode cleans up all created mountpoints, LVM snapshots and directories.
+
+
+=head2 Snapshot
+
+When invoked with the B<snapshot> argument the program will scan the systems mount table for mounted filesystems.
+
+For every given mountpoint with a wanted filesystem type the program checks if the underlying blockdevice is a LVM Volume.
+
+If it's a Logical Volume, the Volume will be snapshotted and mounted at the desired path. If the filesystem resides on any other blockdevice, it will be bind-mounted in the snapshot tree.
+
+
+=head2 Teardown
+
+When running the program in B<teardown> mode, it will scan the systems mount table and unmount all filesystems under B<path>. All Logical Volumes starting with B<--prefix> will be removed. Finally, the directory B<path> will be removed.
+
+=cut

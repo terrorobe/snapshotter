@@ -11,3 +11,5 @@ On Debian/Lenny:
 
 apt-get install liblinux-lvm-perl dh-make-perl
 dh-make-perl --build --install --CPAN Sys::Filesystem
+
+./snapshotter --help

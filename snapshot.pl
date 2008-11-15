@@ -5,6 +5,7 @@ use strict;
 use Sys::Filesystem ();
 use Linux::LVM;
 use POSIX qw(ceil);
+use Getopt::Compact;
 
 use Data::Dumper;
 use Carp;
@@ -38,6 +39,9 @@ if ($mode eq 'snapshot') {
 
 } elsif ($mode eq 'teardown') {
 
+    unmount_snapshots();
+    remove_snapshots();
+    remove_mount_directory();
 
 } else {
 
@@ -45,10 +49,39 @@ if ($mode eq 'snapshot') {
 
 }
 
-print Dumper \%snapshot_filesystems;
+#print Dumper \%snapshot_filesystems;
 #print Dumper \%vgs;
-print Dumper \%lvs;
+#print Dumper \%lvs;
 
+
+sub unmount_snapshots {
+
+    for my $device (keys %fs) {
+        my $mountpoint = $fs{$device}->{'mountpoint'};
+
+        if ($mountpoint =~ m/^$snapshot_path/) {
+            $snapshot_filesystems{$device} = $fs{$device};
+        }
+    }
+
+    for my $device (reverse sort by_mountpoint_length keys %snapshot_filesystems) {
+        my $mountpoint = $snapshot_filesystems{$device}->{'mountpoint'};
+        print "umount $mountpoint\n";
+    }
+}
+
+sub remove_snapshots {
+#FIXME: No snapshot detection possible?!
+    for my $device (keys %lvs) {
+        if ($device =~ m{/$snapshot_lv_prefix}) {
+            print "lvremove --force $device\n";
+        }
+    }
+}
+
+sub remove_mount_directory {
+    rmdir $snapshot_path or croak "Failed to remove Snapshot Path $snapshot_path: $1";
+}
 
 sub create_mount_directory {
 

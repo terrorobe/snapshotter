@@ -31,7 +31,7 @@ my $help;
 GetOptions (
         'lvprefix:s' => \$snapshot_lv_prefix,
         'fstype:s' => \$included_filesystems,
-        'excluded-mountpoint:s' => \$excluded_mountpoints,
+        'excluded-mountpoints:s' => \$excluded_mountpoints,
         'excluded-volumes:s' => \$excluded_volumes,
         'snapshot-size:s' => \$snapshot_size_percentage,
         'dry-run:s' => \$dry_run,
@@ -119,7 +119,7 @@ sub remove_snapshots {
 }
 
 sub remove_mount_directory {
-    rmdir $snapshot_path or croak "Failed to remove Snapshot Path $snapshot_path: $1";
+    rmdir $snapshot_path or croak "Failed to remove Snapshot Path $snapshot_path: $!";
 }
 
 sub create_mount_directory {
@@ -209,7 +209,7 @@ sub collect_lvm_information {
 
             if ($mode eq 'snapshot') {
                 croak "LV Name $device collides with LV snapshot prefix $snapshot_lv_prefix." . 
-                    "Aborting to prevent possible data loss" if ($lvname =~ m/^$snapshot_lv_prefix/);
+                    " Aborting to prevent possible data loss" if ($lvname =~ m/^$snapshot_lv_prefix/);
 
                 # We only need the name of the logical volume here, not the full path.
                 $templv{$device}->{'snapshotname'} = $snapshot_lv_prefix . $lvname;
@@ -317,7 +317,7 @@ snapshotter.pl { snapshot | teardown } path [options]
 
 
    Options:
-      --prefix                  Prefix for snapshot volume names.
+      --lvprefix                Prefix for snapshot volume names.
       --fstype                  Filesystem types which should be snapshotted.
       --excluded-mountpoints    Mountpoints which should be excluded from the tree
       --excluded-volumes        Logical Volumes which should be excluded from the tree
@@ -342,7 +342,7 @@ Run in B<teardown> mode. See the long help for further information.
 
 Path for the snapshot tree. The given directory must not exist. This is a safety precaution so that you can't accidentally mount the snapshot tree over an existing part of the filesystem.
 
-=item B<--prefix> /path/to/tree
+=item B<--lvprefix> /path/to/tree
 
 Prefix for snapshot volume names. The prefix must not be used for any existing Logical Volumes.
 
@@ -395,6 +395,7 @@ If it's a Logical Volume, the Volume will be snapshotted and mounted at the desi
 When running the program in B<teardown> mode, it will scan the systems mount table and unmount all filesystems under B<path>. All Logical Volumes starting with B<--prefix> will be removed. Finally, the directory B<path> will be removed.
 
 =head1 AUTHOR
+
 B<snapshotter> was written by Michael Renner <michael.renner@amd.co.at>.
 
 =cut

@@ -64,6 +64,7 @@ if ($mode eq 'snapshot') {
     collect_lvm_information();
     collect_filesystems();
 
+
     %snapshot_filesystems = build_filesystem_list();
     check_free_space();
 
@@ -230,6 +231,10 @@ sub mount_snapshots {
 sub check_free_space {
 
     for my $device (keys %snapshot_filesystems) {
+
+	# We don't care about non-LVM volumes
+	next if $snapshot_filesystems{$device}->{'mount_type'} ne 'lvm';
+
         my $vg = $lvs{$device}->{'vg'};
         my $lv_pe = $lvs{$device}->{'cur_le'};
 
@@ -260,6 +265,9 @@ sub collect_lvm_information {
     for my $vg (@vglist) {
         %{$vgs{$vg}} = get_volume_group_information($vg);
         $vgs{$vg}->{'space_needed'} = 0;
+
+	# Linux::LVM apparently doesn't fill zero values
+	$vgs{$vg}->{'free_pe'} ||= 0;
 
         my %templv = get_logical_volume_information($vg);
         for my $device (keys %templv) {

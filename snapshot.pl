@@ -215,6 +215,9 @@ sub collect_lvm_information {
 }
 
 
+# This function primes our %fs data structure.
+# Output is pretty much what Sys::Filesystem offers with some trickery wrt LVM.
+
 sub collect_filesystems {
 
     my $fs = new Sys::Filesystem;
@@ -223,6 +226,11 @@ sub collect_filesystems {
     for (@fs) {
         my ($mp, $fstype, $device) = ($fs->mount_point($_), $fs->format($_), $fs->device($_));
         my $lvm_device;
+
+        # We only get devicemapper paths out of the mount tables, so we have to check
+        # if the given devicemapper device belongs to LVM or some different subsystem.
+        # If it's LVM, change the devicename to the LVM naming convention.
+
         if ($device =~ m!/mapper/!) {
             $lvm_device = translate_lvm_path($device);
         }
@@ -233,6 +241,7 @@ sub collect_filesystems {
         else {
             $fs{$device}->{'mount_type'} = 'bind';
         }
+
         $fs{$device}->{'fstype'} = $fstype;
         $fs{$device}->{'mountpoint'} = $mp;
     }
@@ -269,26 +278,22 @@ sub build_filesystem_list {
 
 sub translate_lvm_path {
 #FIXME: Dashes in VG-Names?
-#FIXME: LVM-Detection.
        
     my ($path) = @_;
 
     my $newpath;
 
-    if ($path =~ m!/mapper/!) {
-        my ($scratch) = $path =~ m{/dev/mapper/([a-zA-Z0-9_-]+)$};
-        croak "Failed to parse LVM path $path" unless defined($scratch);
-        my ($vg, $lv) = split /-/, $scratch;
-        $lv =~ s/--/-/g;
-        $newpath = "/dev/$vg/$lv"; 
-    } else {
-        my ($vg, $lv) = $path =~ m{/dev/([^/]+)/(.+)$};
-        croak "Failed to parse LVM path $path" unless defined($vg) && defined($lv);
-        $lv =~ s/-/--/g;
+    # /dev/mapper/raid10-ve201004--postgresql -> /dev/raid10/ve201004-postgresql
 
-        $newpath = "/dev/mapper/$vg-$lv";
+    my ($scratch) = $path =~ m{/dev/mapper/([a-zA-Z0-9_-]+)$};
 
-    }
+    croak "Failed to parse LVM path $path" unless defined($scratch);
+    my ($vg, $lv) = split /-/, $scratch, 2;
+
+    croak "Failed to split $scratch. VG: $vg, LV: $lv" unless (defined($vg) && defined ($lv));
+
+    $lv =~ s/--/-/g;
+    $newpath = "/dev/$vg/$lv"; 
 
     return $newpath;
 }

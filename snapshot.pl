@@ -8,7 +8,6 @@ use POSIX qw(ceil);
 use Getopt::Long;
 use Pod::Usage;
 
-use Data::Dumper;
 use Carp;
 
 my %vgs;

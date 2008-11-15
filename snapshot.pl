@@ -11,51 +11,56 @@ use Pod::Usage;
 use Data::Dumper;
 use Carp;
 
-my $snapshot_path;
-my $snapshot_lv_prefix;
-my @included_filesystems = qw(ext3);
-my @excluded_mountpoints;
-my @excluded_volumes;
-my $snapshot_size_percentage;
-
 my %vgs;
 my %lvs;
 my %fs;
 my %snapshot_filesystems;
+my @invoked_commands;
+
+my $snapshot_path;
+my $snapshot_lv_prefix;
+my $included_filesystems;
+my $excluded_mountpoints;
+my $excluded_volumes;
+my $snapshot_size_percentage;
+my $dry_run;
+my $options;
 my $help;
 
 
 GetOptions (
-        'path:s' => \$snapshot_path,
         'lvprefix:s' => \$snapshot_lv_prefix,
-        'fstype:s' => \@included_filesystems,
-        'excluded-mountpoint:s' => \@excluded_mountpoints,
-        'excluded-volumes:s' => \@excluded_volumes,
+        'fstype:s' => \$included_filesystems,
+        'excluded-mountpoint:s' => \$excluded_mountpoints,
+        'excluded-volumes:s' => \$excluded_volumes,
         'snapshot-size:s' => \$snapshot_size_percentage,
+        'dry-run:s' => \$dry_run,
+        'options' => \$options,
         'help' => \$help,
-        ) or pod2usage(1);
+        ) or pod2usage(-verbose => 0);
 
+pod2usage(-verbose => 1) if $options;
 pod2usage(-verbose => 2) if $help;
 
-$snapshot_path ||= '/mnt/snapshotter';
-$snapshot_lv_prefix ||= 'SNAP';
-$snapshot_size_percentage ||= 10;
-@included_filesystems = qw(ext3) unless @included_filesystems;
-
-my %excluded_mountpoints = map { $_ => 1 } @excluded_mountpoints;
-my %excluded_volumes = map { $_ => 1 } @excluded_volumes;
-my %included_filesystems = map { $_ => 1 } @included_filesystems;
-
 my $mode;
+($mode, $snapshot_path) = @ARGV;
 
-print Dumper \@ARGV;
+pod2usage unless $snapshot_path;
+$snapshot_lv_prefix ||= 'SNAP';
+$included_filesystems ||= join(',', qw(ext2 ext3 xfs reiserfs));
+$excluded_mountpoints ||= '';
+$excluded_volumes ||= '';
+$snapshot_size_percentage ||= 10;
 
-exit;
+my %excluded_mountpoints = map { $_ => 1 } split /,/, $excluded_mountpoints;
+my %excluded_volumes = map { $_ => 1 } split /,/, $excluded_volumes;
+my %included_filesystems = map { $_ => 1 } split /,/, $included_filesystems;
 
-collect_lvm_information();
-collect_filesystems();
+
 
 if ($mode eq 'snapshot') {
+    collect_lvm_information();
+    collect_filesystems();
 
     %snapshot_filesystems = build_filesystem_list();
     check_free_space();
@@ -65,15 +70,16 @@ if ($mode eq 'snapshot') {
     mount_snapshots();
 
 } elsif ($mode eq 'teardown') {
+    collect_lvm_information();
+    collect_filesystems();
 
     unmount_snapshots();
     remove_snapshots();
     remove_mount_directory();
 
 } else {
-
-    croak "Unknown mode";
-
+    print "Unknown mode $mode\n";
+    pod2usage(-verbose => 0);
 }
 
 #print Dumper \%snapshot_filesystems;
@@ -86,11 +92,13 @@ sub unmount_snapshots {
     for my $device (keys %fs) {
         my $mountpoint = $fs{$device}->{'mountpoint'};
 
+        # Unmount all filesystems within the snapshot path.
         if ($mountpoint =~ m/^$snapshot_path/) {
             $snapshot_filesystems{$device} = $fs{$device};
         }
     }
 
+    # We need to unmount the filesystems in reverse order to prevent busy filesystems.
     for my $device (reverse sort by_mountpoint_length keys %snapshot_filesystems) {
         my $mountpoint = $snapshot_filesystems{$device}->{'mountpoint'};
         print "umount $mountpoint\n";
@@ -100,6 +108,10 @@ sub unmount_snapshots {
 sub remove_snapshots {
 #FIXME: No snapshot detection possible?!
     for my $device (keys %lvs) {
+        # Remove all volumes whose names begin with our prefix
+        # This sounds more dangerous than it is; the --force option is needed because
+        # snapshot devices are always active. Even with --force, lvremove won't remove mounted
+        # volumes
         if ($device =~ m{/$snapshot_lv_prefix}) {
             print "lvremove --force $device\n";
         }
@@ -138,11 +150,11 @@ sub mount_snapshots {
         my $mount_type = $snapshot_filesystems{$device}->{'mount_type'};
 
         if ($mount_type eq 'lvm') {
-        
-        my $vg = $lvs{$device}->{'vg'};
-        my $snapname = $lvs{$device}->{'snapshotname'};
 
-        print "mount /dev/$vg/$snapname $snapshot_path$mountpoint\n";
+            my $vg = $lvs{$device}->{'vg'};
+            my $snapname = $lvs{$device}->{'snapshotname'};
+
+            print "mount /dev/$vg/$snapname $snapshot_path$mountpoint\n";
         } 
         elsif ($mount_type eq 'bind') {
 
@@ -160,19 +172,26 @@ sub check_free_space {
     for my $device (keys %snapshot_filesystems) {
         my $vg = $lvs{$device}->{'vg'};
         my $lv_pe = $lvs{$device}->{'cur_le'};
+
+        # We need an integer here, rounding up for good measure...
         my $pe_needed = ceil($lv_pe * ($snapshot_size_percentage / 100));
+
         $lvs{$device}->{'space_needed'} = $pe_needed;
         $vgs{$vg}->{'space_needed'} += $pe_needed;
     }
 
     for my $vg (keys %vgs) {
-        my ($free, $needed) = ($vgs{$vg}->{'free_pe'}, $vgs{$vg}->{'space_needed'});
+        my ($needed, $free) = ($vgs{$vg}->{'space_needed'}, $vgs{$vg}->{'free_pe'});
         if ($needed > $free) {
             print "Not enough Physical Extents available in VG $vg. Needed: $needed, Free: $free\n";
             exit 1;
         }
     }
 }
+
+
+# This function primes our %vgs and %lvs data structures
+# Output is pretty much what Linux::LVM offers us, plus a few things we need to track ourself.
 
 sub collect_lvm_information {
 
@@ -185,9 +204,12 @@ sub collect_lvm_information {
         my %templv = get_logical_volume_information($vg);
         for my $device (keys %templv) {
             $templv{$device}->{'vg'} = $vg;
+
+            # We only need the name of the logical volume here, not the full path.
             $templv{$device}->{'snapshotname'} = $snapshot_lv_prefix . (split /\//, $device)[-1];
         }
 
+        # Add the LVs from this VG to the global list of LVs via an hash slice.
         @lvs{keys %templv} = values %templv;
     }
 }
@@ -279,7 +301,7 @@ snapshotter - A LVM-based filesystem tree snapshot creator
 
 =head1 SYNOPSIS
 
-snapshotter.pl { snapshot | teardown } [path] [options]
+snapshotter.pl { snapshot | teardown } path [options]
 
 
    Options:
@@ -288,6 +310,9 @@ snapshotter.pl { snapshot | teardown } [path] [options]
       --excluded-mountpoints    Mountpoints which should be excluded from the tree
       --excluded-volumes        Logical Volumes which should be excluded from the tree
       --snapshot-size           Size of snapshot volumes in percent (relative to source volume).
+      --dry-run                 Prints all commands to stdout instead of invoking them
+      --options                 Show description for options
+      --help                    Show complete documentation
 
 =head1 OPTIONS
 
@@ -303,29 +328,29 @@ Run in B<teardown> mode. See the long help for further information.
 
 =item B<path>
 
-Path for the snapshot tree. The given directory must not exist. This is a safety precaution so that one can't accidentally mount the snapshots over an existing part of the filesystem.
+Path for the snapshot tree. The given directory must not exist. This is a safety precaution so that you can't accidentally mount the snapshot tree over an existing part of the filesystem.
 
-=item B<--prefix>
+=item B<--prefix> /path/to/tree
 
 Prefix for snapshot volume names. The prefix must not be used for any existing Logical Volumes.
 
 B<Default>: SNAP
 
-=item B<--fstype>
+=item B<--fstype> ext4[,btrfs,...]
 
 List of filesystems which are considered for the snapshot tree.
 
 B<Default>: B<ext2>, B<ext3>, B<xfs>, B<reiserfs>
 
-=item B<--excluded-mountpoints>
+=item B<--excluded-mountpoints> /mount/point1[,/mountpoint2,...]
 
 Mountpoints which shouldn't get recreated in the snapshot tree.
 
-=item B<--excluded-volumes>
+=item B<--excluded-volumes> /dev/VG/LV[,/dev/quux/jigga,...]
 
 Logical volumes which shouldn't get snapshotted and mounted in the snapshot tree. Names must be fully qualified, e.g. /dev/VGxy/LVzzy
 
-=item B<--snapshot-size>
+=item B<--snapshot-size> 10
 
 Defines how large the snapshot volumes will be in relation to it's source volume. If the required space exceeds the amount of free space in the Volume Group, no snapshots will be created and the program aborts.
 
@@ -339,7 +364,7 @@ B<Default>: 10%
 
 B<snapshotter> is a LVM and mount wrapper which aids system administrators in creating consistent backups of their servers.
 
-After running it in B<snapshot> mode, a complete copy of the servers local filesystems will be present in B<path>.
+After running it in B<snapshot> mode, a complete copy of the servers local filesystems will be present in B<path>, which can then safely be backed up.
 
 Invoking it in B<teardown> mode cleans up all created mountpoints, LVM snapshots and directories.
 
@@ -356,5 +381,8 @@ If it's a Logical Volume, the Volume will be snapshotted and mounted at the desi
 =head2 Teardown
 
 When running the program in B<teardown> mode, it will scan the systems mount table and unmount all filesystems under B<path>. All Logical Volumes starting with B<--prefix> will be removed. Finally, the directory B<path> will be removed.
+
+=head1 AUTHOR
+B<snapshotter> was written by Michael Renner <michael.renner@amd.co.at>.
 
 =cut

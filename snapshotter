@@ -361,9 +361,6 @@ sub build_filesystem_list {
 }
 
 sub translate_lvm_path {
-
-    #FIXME: Dashes in VG-Names?
-
     my ($path) = @_;
 
     my $newpath;
@@ -373,11 +370,14 @@ sub translate_lvm_path {
     my ($scratch) = $path =~ m{/dev/mapper/([a-zA-Z0-9_-]+)$};
 
     croak "Failed to parse LVM path $path" unless defined($scratch);
-    my ( $vg, $lv ) = split /-/, $scratch, 2;
+    # Protect the dash with lookahead/behinds to handle beauties such as
+    # vg--lala--la-lv--lolo--lo
+    my ( $vg, $lv ) = split /(?<!-)-(?!-)/, $scratch, 2;
 
     croak "Failed to split $scratch. VG: $vg, LV: $lv"
       unless ( defined($vg) && defined($lv) );
 
+    $vg =~ s/--/-/g;
     $lv =~ s/--/-/g;
     $newpath = "/dev/$vg/$lv";
 

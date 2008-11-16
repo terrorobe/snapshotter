@@ -46,15 +46,15 @@ pod2usage( -verbose => 2 ) if $help;
 my $mode;
 ( $mode, $snapshot_path ) = @ARGV;
 
-# Clean up any trailing slashes autocomplete might have gifted us
-$snapshot_path =~ s/\/+$//g;
-
 pod2usage unless $snapshot_path;
 $snapshot_lv_prefix       ||= 'SNAP';
 $included_filesystems     ||= join( ',', qw(ext2 ext3 xfs reiserfs) );
 $excluded_mountpoints     ||= '';
 $excluded_volumes         ||= '';
 $snapshot_size_percentage ||= 10;
+
+# Clean up any trailing slashes autocomplete might have gifted us
+$snapshot_path =~ s/\/+$//g;
 
 my %excluded_mountpoints = map { $_ => 1 } split /,/, $excluded_mountpoints;
 my %excluded_volumes     = map { $_ => 1 } split /,/, $excluded_volumes;

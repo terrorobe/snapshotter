@@ -1,5 +1,12 @@
 #!/usr/bin/perl -w
 
+#TODO:
+# missing action mentioning
+# shorthand options
+# etch Linux::LVM path detection borked
+# lenny lvm output
+# literales quoten (vg/lv namen et al)
+
 use strict;
 
 use Sys::Filesystem ();

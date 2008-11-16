@@ -1,7 +1,6 @@
 #!/usr/bin/perl -w
 
 #TODO:
-# shorthand options
 # etch Linux::LVM path detection borked
 # Linux::LVM verboseness
 
@@ -38,11 +37,11 @@ GetOptions(
     'fstype:s'               => \$included_filesystems,
     'exclude-mountpoints:s'  => \$exclude_mountpoints,
     'exclude-volumes:s'      => \$exclude_volumes,
-    'snapshot-size:s'        => \$snapshot_size_percentage,
-    'dry-run:s'              => \$dry_run,
-    'verbose:s'              => \$verbose,
+    'snapshot-size:i'        => \$snapshot_size_percentage,
+    'dry-run|n'              => \$dry_run,
+    'verbose|v'              => \$verbose,
     'options'                => \$options,
-    'help'                   => \$help,
+    'help|h'                 => \$help,
 ) or pod2usage( -verbose => 0 );
 
 pod2usage( -verbose => 1 ) if $options;
@@ -405,15 +404,15 @@ snapshotter { snapshot | teardown } path [options]
 
 
    Options:
-      --lvprefix                Prefix for snapshot volume names.
-      --fstype                  Filesystem types which should be snapshotted.
+      --lvprefix                Prefix for snapshot volume names
+      --fstype                  Filesystem types which should be snapshotted
       --exclude-mountpoints     Mountpoints which should be excluded from the tree
       --exclude-volumes         Logical Volumes which should be excluded from the tree
-      --snapshot-size           Size of snapshot volumes in percent (relative to source volume).
-      --dry-run                 Prints all commands to stdout instead of invoking them
-      --verbose                 Shows commands during execution
+      --snapshot-size           Size of snapshot volumes in percent (relative to source volume)
+  -n, --dry-run                 Prints all commands to stdout instead of invoking them
+  -v, --verbose                 Shows commands during execution
       --options                 Show description for options
-      --help                    Show complete documentation
+  -h, --help                    Show complete documentation
 
 =head1 OPTIONS
 

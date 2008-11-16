@@ -28,45 +28,41 @@ my $verbose;
 my $options;
 my $help;
 
+GetOptions(
+    'lvprefix:s'             => \$snapshot_lv_prefix,
+    'fstype:s'               => \$included_filesystems,
+    'excluded-mountpoints:s' => \$excluded_mountpoints,
+    'excluded-volumes:s'     => \$excluded_volumes,
+    'snapshot-size:s'        => \$snapshot_size_percentage,
+    'dry-run:s'              => \$dry_run,
+    'verbose:s'              => \$verbose,
+    'options'                => \$options,
+    'help'                   => \$help,
+) or pod2usage( -verbose => 0 );
 
-GetOptions (
-        'lvprefix:s' => \$snapshot_lv_prefix,
-        'fstype:s' => \$included_filesystems,
-        'excluded-mountpoints:s' => \$excluded_mountpoints,
-        'excluded-volumes:s' => \$excluded_volumes,
-        'snapshot-size:s' => \$snapshot_size_percentage,
-        'dry-run:s' => \$dry_run,
-        'verbose:s' => \$verbose,
-        'options' => \$options,
-        'help' => \$help,
-        ) or pod2usage(-verbose => 0);
-
-pod2usage(-verbose => 1) if $options;
-pod2usage(-verbose => 2) if $help;
+pod2usage( -verbose => 1 ) if $options;
+pod2usage( -verbose => 2 ) if $help;
 
 my $mode;
-($mode, $snapshot_path) = @ARGV;
+( $mode, $snapshot_path ) = @ARGV;
 
 # Clean up any trailing slashes autocomplete might have gifted us
 $snapshot_path =~ s/\/+$//g;
 
 pod2usage unless $snapshot_path;
-$snapshot_lv_prefix ||= 'SNAP';
-$included_filesystems ||= join(',', qw(ext2 ext3 xfs reiserfs));
-$excluded_mountpoints ||= '';
-$excluded_volumes ||= '';
+$snapshot_lv_prefix       ||= 'SNAP';
+$included_filesystems     ||= join( ',', qw(ext2 ext3 xfs reiserfs) );
+$excluded_mountpoints     ||= '';
+$excluded_volumes         ||= '';
 $snapshot_size_percentage ||= 10;
 
 my %excluded_mountpoints = map { $_ => 1 } split /,/, $excluded_mountpoints;
-my %excluded_volumes = map { $_ => 1 } split /,/, $excluded_volumes;
+my %excluded_volumes     = map { $_ => 1 } split /,/, $excluded_volumes;
 my %included_filesystems = map { $_ => 1 } split /,/, $included_filesystems;
 
-
-
-if ($mode eq 'snapshot') {
+if ( $mode eq 'snapshot' ) {
     collect_lvm_information();
     collect_filesystems();
-
 
     %snapshot_filesystems = build_filesystem_list();
     check_free_space();
@@ -75,7 +71,8 @@ if ($mode eq 'snapshot') {
     create_snapshots();
     mount_snapshots();
 
-} elsif ($mode eq 'teardown') {
+}
+elsif ( $mode eq 'teardown' ) {
     collect_lvm_information();
     collect_filesystems();
 
@@ -83,20 +80,19 @@ if ($mode eq 'snapshot') {
     remove_snapshots();
     remove_mount_directory();
 
-} else {
-    print "Unknown mode $mode\n";
-    pod2usage(-verbose => 0);
 }
-
+else {
+    print "Unknown mode $mode\n";
+    pod2usage( -verbose => 0 );
+}
 
 run_queue();
 
-
 sub report_error {
-    my ($rc, $command, $output) = @_;
+    my ( $rc, $command, $output ) = @_;
 
-    my $invoked = join("\n", @invoked_commands);
-    my $outstanding = join("\n", @command_queue);
+    my $invoked     = join( "\n", @invoked_commands );
+    my $outstanding = join( "\n", @command_queue );
 
     my $message = <<EOF;
 
@@ -127,17 +123,17 @@ sub run_queue {
     my $command;
     my $output;
 
-    while ($command = shift @command_queue) {
+    while ( $command = shift @command_queue ) {
 
-        if (defined($dry_run)) {
+        if ( defined($dry_run) ) {
             print "$command\n";
-        } 
+        }
         else {
-            print "Running: $command\n" if (defined($verbose));
+            print "Running: $command\n" if ( defined($verbose) );
             $output = qx/$command 2>&1/;
             my $rc = $? >> 8;
-            if ($rc != 0) {
-                report_error($rc, $command, $output);
+            if ( $rc != 0 ) {
+                report_error( $rc, $command, $output );
                 exit 1;
             }
         }
@@ -153,74 +149,80 @@ sub queue_command {
 
 sub unmount_snapshots {
 
-    for my $device (keys %fs) {
+    for my $device ( keys %fs ) {
         my $mountpoint = $fs{$device}->{'mountpoint'};
 
         # Unmount all filesystems within the snapshot path.
-        if ($mountpoint =~ m/^$snapshot_path/) {
+        if ( $mountpoint =~ m/^$snapshot_path/ ) {
             $snapshot_filesystems{$device} = $fs{$device};
         }
     }
 
-    # We need to unmount the filesystems in reverse order to prevent busy filesystems.
-    for my $device (reverse sort by_mountpoint_length keys %snapshot_filesystems) {
+# We need to unmount the filesystems in reverse order to prevent busy filesystems.
+    for my $device (
+        reverse sort by_mountpoint_length keys %snapshot_filesystems )
+    {
         my $mountpoint = $snapshot_filesystems{$device}->{'mountpoint'};
         queue_command("umount $mountpoint");
     }
 }
 
 sub remove_snapshots {
-#FIXME: No snapshot detection possible?!
-    for my $device (keys %lvs) {
-        # Remove all volumes whose names begin with our prefix
-        # This sounds more dangerous than it is; the --force option is needed because
-        # snapshot devices are always active, but even with --force, lvremove won't remove mounted
-        # volumes
-        if ($device =~ m{/$snapshot_lv_prefix}) {
+
+    #FIXME: No snapshot detection possible?!
+    for my $device ( keys %lvs ) {
+
+# Remove all volumes whose names begin with our prefix
+# This sounds more dangerous than it is; the --force option is needed because
+# snapshot devices are always active, but even with --force, lvremove won't remove mounted
+# volumes
+        if ( $device =~ m{/$snapshot_lv_prefix} ) {
             queue_command("lvremove --force $device");
         }
     }
 }
 
 sub remove_mount_directory {
-    queue_command("rmdir $snapshot_path") if (-d $snapshot_path);
+    queue_command("rmdir $snapshot_path") if ( -d $snapshot_path );
 }
 
 sub create_mount_directory {
 
-    croak "Snapshot Path $snapshot_path already exists" if (-d $snapshot_path);
+    croak "Snapshot Path $snapshot_path already exists"
+      if ( -d $snapshot_path );
 
     queue_command("mkdir $snapshot_path");
 }
 
 sub create_snapshots {
 
-    for my $device (keys %snapshot_filesystems) {
-        if ($snapshot_filesystems{$device}->{'mount_type'} eq 'lvm') {
+    for my $device ( keys %snapshot_filesystems ) {
+        if ( $snapshot_filesystems{$device}->{'mount_type'} eq 'lvm' ) {
             my $space_needed = $lvs{$device}->{'space_needed'};
-            my $snapname = $lvs{$device}->{'snapshotname'};
+            my $snapname     = $lvs{$device}->{'snapshotname'};
             queue_command("lvcreate -s -l $space_needed -n $snapname $device");
         }
     }
 }
 
 sub by_mountpoint_length {
-    length($snapshot_filesystems{$a}->{'mountpoint'}) <=> length($snapshot_filesystems{$b}->{'mountpoint'});
+    length( $snapshot_filesystems{$a}->{'mountpoint'} ) <=>
+      length( $snapshot_filesystems{$b}->{'mountpoint'} );
 }
 
 sub mount_snapshots {
-    for my $device (sort by_mountpoint_length keys %snapshot_filesystems) {
+    for my $device ( sort by_mountpoint_length keys %snapshot_filesystems ) {
         my $mountpoint = $snapshot_filesystems{$device}->{'mountpoint'};
         my $mount_type = $snapshot_filesystems{$device}->{'mount_type'};
 
-        if ($mount_type eq 'lvm') {
+        if ( $mount_type eq 'lvm' ) {
 
-            my $vg = $lvs{$device}->{'vg'};
+            my $vg       = $lvs{$device}->{'vg'};
             my $snapname = $lvs{$device}->{'snapshotname'};
 
             queue_command("mount /dev/$vg/$snapname $snapshot_path$mountpoint");
-        } 
-        elsif ($mount_type eq 'bind') {
+        }
+        elsif ( $mount_type eq 'bind' ) {
 
             queue_command("mount --bind $mountpoint $snapshot_path$mountpoint");
         }
@@ -229,34 +231,34 @@ sub mount_snapshots {
         }
     }
 }
-        
 
 sub check_free_space {
 
-    for my $device (keys %snapshot_filesystems) {
+    for my $device ( keys %snapshot_filesystems ) {
 
-	# We don't care about non-LVM volumes
-	next if $snapshot_filesystems{$device}->{'mount_type'} ne 'lvm';
+        # We don't care about non-LVM volumes
+        next if $snapshot_filesystems{$device}->{'mount_type'} ne 'lvm';
 
-        my $vg = $lvs{$device}->{'vg'};
+        my $vg    = $lvs{$device}->{'vg'};
         my $lv_pe = $lvs{$device}->{'cur_le'};
 
         # We need an integer here, rounding up for good measure...
-        my $pe_needed = ceil($lv_pe * ($snapshot_size_percentage / 100));
+        my $pe_needed = ceil( $lv_pe * ( $snapshot_size_percentage / 100 ) );
 
         $lvs{$device}->{'space_needed'} = $pe_needed;
         $vgs{$vg}->{'space_needed'} += $pe_needed;
     }
 
-    for my $vg (keys %vgs) {
-        my ($needed, $free) = ($vgs{$vg}->{'space_needed'}, $vgs{$vg}->{'free_pe'});
-        if ($needed > $free) {
-            print "Not enough Physical Extents available in VG $vg. Needed: $needed, Free: $free\n";
+    for my $vg ( keys %vgs ) {
+        my ( $needed, $free ) =
+          ( $vgs{$vg}->{'space_needed'}, $vgs{$vg}->{'free_pe'} );
+        if ( $needed > $free ) {
+            print
+"Not enough Physical Extents available in VG $vg. Needed: $needed, Free: $free\n";
             exit 1;
         }
     }
 }
-
 
 # This function primes our %vgs and %lvs data structures
 # Output is pretty much what Linux::LVM offers us, plus a few things we need to track ourself.
@@ -266,32 +268,34 @@ sub collect_lvm_information {
     my @vglist = get_volume_group_list();
 
     for my $vg (@vglist) {
-        %{$vgs{$vg}} = get_volume_group_information($vg);
+        %{ $vgs{$vg} } = get_volume_group_information($vg);
         $vgs{$vg}->{'space_needed'} = 0;
 
-	# Linux::LVM apparently doesn't fill zero values
-	$vgs{$vg}->{'free_pe'} ||= 0;
+        # Linux::LVM apparently doesn't fill zero values
+        $vgs{$vg}->{'free_pe'} ||= 0;
 
         my %templv = get_logical_volume_information($vg);
-        for my $device (keys %templv) {
+        for my $device ( keys %templv ) {
             $templv{$device}->{'vg'} = $vg;
 
-            my $lvname = (split /\//, $device)[-1];
+            my $lvname = ( split /\//, $device )[-1];
 
-            if ($mode eq 'snapshot') {
-                croak "LV Name $device collides with LV snapshot prefix $snapshot_lv_prefix." . 
-                    " Aborting to prevent possible data loss" if ($lvname =~ m/^$snapshot_lv_prefix/);
+            if ( $mode eq 'snapshot' ) {
+                croak
+"LV Name $device collides with LV snapshot prefix $snapshot_lv_prefix."
+                  . " Aborting to prevent possible data loss"
+                  if ( $lvname =~ m/^$snapshot_lv_prefix/ );
 
-                # We only need the name of the logical volume here, not the full path.
-                $templv{$device}->{'snapshotname'} = $snapshot_lv_prefix . $lvname;
+          # We only need the name of the logical volume here, not the full path.
+                $templv{$device}->{'snapshotname'} =
+                  $snapshot_lv_prefix . $lvname;
             }
         }
 
         # Add the LVs from this VG to the global list of LVs via an hash slice.
-        @lvs{keys %templv} = values %templv;
-    } 
+        @lvs{ keys %templv } = values %templv;
+    }
 }
-
 
 # This function primes our %fs data structure.
 # Output is pretty much what Sys::Filesystem offers with some trickery wrt LVM.
@@ -302,17 +306,18 @@ sub collect_filesystems {
     my @fs = $fs->filesystems();
 
     for (@fs) {
-        my ($mp, $fstype, $device) = ($fs->mount_point($_), $fs->format($_), $fs->device($_));
+        my ( $mp, $fstype, $device ) =
+          ( $fs->mount_point($_), $fs->format($_), $fs->device($_) );
         my $lvm_device;
 
-        # We only get devicemapper paths out of the mount tables, so we have to check
-        # if the given devicemapper device belongs to LVM or some different subsystem.
-        # If it's LVM, change the devicename to the LVM naming convention.
+  # We only get devicemapper paths out of the mount tables, so we have to check
+  # if the given devicemapper device belongs to LVM or some different subsystem.
+  # If it's LVM, change the devicename to the LVM naming convention.
 
-        if ($device =~ m!/mapper/!) {
+        if ( $device =~ m!/mapper/! ) {
             $lvm_device = translate_lvm_path($device);
         }
-        if (defined $lvm_device && exists $lvs{$lvm_device}) {
+        if ( defined $lvm_device && exists $lvs{$lvm_device} ) {
             $device = $lvm_device;
             $fs{$device}->{'mount_type'} = 'lvm';
         }
@@ -320,28 +325,31 @@ sub collect_filesystems {
             $fs{$device}->{'mount_type'} = 'bind';
         }
 
-        $fs{$device}->{'fstype'} = $fstype;
+        $fs{$device}->{'fstype'}     = $fstype;
         $fs{$device}->{'mountpoint'} = $mp;
     }
 }
 
 sub build_filesystem_list {
     my %snapfs;
-    for my $device (keys %fs) {
-        my $fstype = $fs{$device}->{'fstype'};
+    for my $device ( keys %fs ) {
+        my $fstype     = $fs{$device}->{'fstype'};
         my $mountpoint = $fs{$device}->{'mountpoint'};
 
-        if (not exists $included_filesystems{$fstype}) {
+        if ( not exists $included_filesystems{$fstype} ) {
+
             #print "Excluding $device - wrong fstype\n";
             next;
         }
 
-        if (exists $excluded_mountpoints{$mountpoint}) {
+        if ( exists $excluded_mountpoints{$mountpoint} ) {
+
             #print "Excluding $device - excluded mountpoint\n";
             next;
         }
 
-        if (exists $excluded_volumes{$device}) {
+        if ( exists $excluded_volumes{$device} ) {
+
             #print "Excluding $device - excluded volume\n";
             next;
         }
@@ -351,12 +359,11 @@ sub build_filesystem_list {
     }
     return %snapfs;
 }
-        
-
 
 sub translate_lvm_path {
-#FIXME: Dashes in VG-Names?
-       
+
+    #FIXME: Dashes in VG-Names?
+
     my ($path) = @_;
 
     my $newpath;
@@ -366,12 +373,13 @@ sub translate_lvm_path {
     my ($scratch) = $path =~ m{/dev/mapper/([a-zA-Z0-9_-]+)$};
 
     croak "Failed to parse LVM path $path" unless defined($scratch);
-    my ($vg, $lv) = split /-/, $scratch, 2;
+    my ( $vg, $lv ) = split /-/, $scratch, 2;
 
-    croak "Failed to split $scratch. VG: $vg, LV: $lv" unless (defined($vg) && defined ($lv));
+    croak "Failed to split $scratch. VG: $vg, LV: $lv"
+      unless ( defined($vg) && defined($lv) );
 
     $lv =~ s/--/-/g;
-    $newpath = "/dev/$vg/$lv"; 
+    $newpath = "/dev/$vg/$lv";
 
     return $newpath;
 }

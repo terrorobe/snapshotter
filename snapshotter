@@ -3,6 +3,8 @@
 #TODO:
 # etch Linux::LVM path detection borked
 # Linux::LVM verboseness
+# Execution Summary
+# Distilled dry-run (what gets mounted where?)
 
 use strict;
 

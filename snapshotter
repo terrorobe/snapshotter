@@ -103,6 +103,7 @@ sub report_error {
 
     my $invoked     = join( "\n", @invoked_commands );
     my $outstanding = join( "\n", @command_queue );
+    $output ||= '';
 
     my $message = <<EOF;
 

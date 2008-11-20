@@ -207,6 +207,8 @@ sub create_mount_directory {
 
 sub create_snapshots {
 
+    # Sync for good measure, to reduce amount of stale blockdevice-data
+    queue_command("sync");
     for my $device ( keys %snapshot_filesystems ) {
         if ( $snapshot_filesystems{$device}->{'mount_type'} eq 'lvm' ) {
             my $space_needed = $lvs{$device}->{'space_needed'};

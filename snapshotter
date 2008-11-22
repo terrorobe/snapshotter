@@ -13,6 +13,7 @@ use Linux::LVM;
 use POSIX qw(ceil);
 use Getopt::Long;
 use Pod::Usage;
+use File::Which;
 
 use Carp;
 
@@ -22,6 +23,7 @@ my %fs;
 my %snapshot_filesystems;
 my @command_queue;
 my @invoked_commands;
+my %path_table;
 
 my $snapshot_path;
 my $snapshot_lv_prefix;
@@ -71,8 +73,8 @@ my %excluded_volumes     = map { $_ => 1 } split /,/, $exclude_volumes;
 my %included_filesystems = map { $_ => 1 } split /,/, $included_filesystems;
 
 if ( $mode eq 'snapshot' ) {
-    collect_lvm_information();
-    collect_filesystems();
+    
+    preflight_checks();
 
     %snapshot_filesystems = build_filesystem_list();
     check_free_space();
@@ -83,8 +85,8 @@ if ( $mode eq 'snapshot' ) {
 
 }
 elsif ( $mode eq 'teardown' ) {
-    collect_lvm_information();
-    collect_filesystems();
+
+    preflight_checks();
 
     unmount_snapshots();
     remove_snapshots();
@@ -97,6 +99,30 @@ else {
 }
 
 run_queue();
+
+sub preflight_checks {
+
+    check_tools();
+    collect_lvm_information();
+    collect_filesystems();
+
+}
+
+sub check_tools {
+
+    my @commands = qw /mkdir rmdir mount umount lvcreate lvremove sync/;
+
+    for my $command (@commands) {
+        my $path = which($command);
+
+        if (defined($path)) {
+            $path_table{$command} = $path;
+        }
+        else {
+            croak "Can't find path for $command. PATH: $ENV{'PATH'}\n";
+        }
+    }
+}
 
 sub report_error {
     my ( $rc, $command, $output ) = @_;
@@ -155,7 +181,15 @@ sub run_queue {
 sub queue_command {
     my ($command) = @_;
 
-    push @command_queue, $command;
+    my $arguments;
+
+    ($command, $arguments) = split /\s+/, $command, 2;
+
+    $arguments ||= '';
+
+    croak "Failed to find $command in PATH table. Aborting\n" unless (exists($path_table{$command}));
+
+    push @command_queue, "$path_table{$command} $arguments";
 }
 
 sub unmount_snapshots {

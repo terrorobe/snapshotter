@@ -164,16 +164,17 @@ sub run_queue {
 
         if ( defined($dry_run) ) {
             print "$command\n";
+            next;
         }
-        else {
-            print "Running: $command\n" if ( defined($verbose) );
-            $output = qx/$command 2>&1/;
-            my $rc = $? >> 8;
-            if ( $rc != 0 ) {
-                report_error( $rc, $command, $output );
-                exit 1;
-            }
+
+        print "Running: $command\n" if ( defined($verbose) );
+        $output = qx/$command 2>&1/;
+        my $rc = $? >> 8;
+        if ( $rc != 0 ) {
+            report_error( $rc, $command, $output );
+            exit 1;
         }
+
         push @invoked_commands, $command;
     }
 }

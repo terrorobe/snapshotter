@@ -221,7 +221,7 @@ sub remove_snapshots {
 # This sounds more dangerous than it is; the --force option is needed because
 # snapshot devices are always active, but even with --force, lvremove won't remove mounted
 # volumes
-        if ( $device =~ m{/$snapshot_lv_prefix} ) {
+        if ( $device =~ m{/$snapshot_lv_prefix/} ) {
             queue_command("lvremove --force $device");
         }
     }
@@ -283,7 +283,7 @@ sub check_free_space {
 
     for my $device ( keys %snapshot_filesystems ) {
 
-        # We don't care about non-LVM volumes
+        # We don't care about non-LVM volumes here
         next if $snapshot_filesystems{$device}->{'mount_type'} ne 'lvm';
 
         my $vg    = $lvs{$device}->{'vg'};
@@ -361,13 +361,18 @@ sub collect_filesystems {
   # if the given devicemapper device belongs to LVM or some different subsystem.
   # If it's LVM, change the devicename to the LVM naming convention.
 
+        # Translate for good measure
         if ( $device =~ m!/mapper/! ) {
             $lvm_device = translate_lvm_path($device);
         }
+
+        # Is this a known lvm device?
         if ( defined $lvm_device && exists $lvs{$lvm_device} ) {
             $device = $lvm_device;
             $fs{$device}->{'mount_type'} = 'lvm';
         }
+
+        # Fallback: Bind mount the given mountpoint
         else {
             $fs{$device}->{'mount_type'} = 'bind';
         }
@@ -377,6 +382,9 @@ sub collect_filesystems {
     }
 }
 
+# This function takes the list of known mountpoints and filters
+# undesired filesystems/mountpoints/volumes
+
 sub build_filesystem_list {
     my %snapfs;
     for my $device ( keys %fs ) {
@@ -385,19 +393,19 @@ sub build_filesystem_list {
 
         if ( not exists $included_filesystems{$fstype} ) {
 
-            #print "Excluding $device - wrong fstype\n";
+            print "Excluding $device - wrong fstype\n" if ($verbose);
             next;
         }
 
         if ( exists $excluded_mountpoints{$mountpoint} ) {
 
-            #print "Excluding $device - excluded mountpoint\n";
+            print "Excluding $device - excluded mountpoint\n" if ($verbose);
             next;
         }
 
         if ( exists $excluded_volumes{$device} ) {
 
-            #print "Excluding $device - excluded volume\n";
+            print "Excluding $device - excluded volume\n" if ($verbose);
             next;
         }
 
@@ -417,6 +425,7 @@ sub translate_lvm_path {
     my ($scratch) = $path =~ m{/dev/mapper/([a-zA-Z0-9_-]+)$};
 
     croak "Failed to parse LVM path $path" unless defined($scratch);
+
     # Protect the dash with lookahead/behinds to handle beauties such as
     # vg--lala--la-lv--lolo--lo
     my ( $vg, $lv ) = split /(?<!-)-(?!-)/, $scratch, 2;

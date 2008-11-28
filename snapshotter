@@ -222,7 +222,7 @@ sub remove_snapshots {
 # This sounds more dangerous than it is; the --force option is needed because
 # snapshot devices are always active, but even with --force, lvremove won't remove mounted
 # volumes
-        if ( $device =~ m{/$snapshot_lv_prefix/} ) {
+        if ( $device =~ m!/$snapshot_lv_prefix! ) {
             queue_command("lvremove --force $device");
         }
     }

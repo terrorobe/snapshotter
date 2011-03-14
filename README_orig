@@ -1,0 +1,63 @@
+       snapshotter - A LVM-based filesystem tree snapshot creator
+
+
+What is this?
+=============
+
+snapshotter is a tool which helps you to automatically create a snapshot
+of your complete "virtual" filesystem tree which you then can use as source
+for a consistent backup.
+
+Example
+=======
+
+Mountpoints:
+
+/ -> /dev/mapper/vg-root
+/boot -> /dev/hda2
+/srv -> /dev/mapper/vg-srv
+
+snapshotter being called in "snapshot" mode with /mnt/backup as path would
+do the following actions:
+
+*) Create the directory for the mountpoint /mnt/backup
+*) Create snapshots of the "root" and "srv" logical volumes
+*) Mount the snapshots in /mnt/backup and /mnt/backup/srv respectively
+*) Bind-Mount /boot to /mnt/backup/boot
+
+You can then use /mnt/backup to save a consistent state of the filesystems.
+
+When you call snapshotter in "teardown" mode, it does the above actions in
+reverse order.
+
+
+Installation
+============
+
+Requirements:
+
+*) Perl 5.8 or later
+*) Linux::LVM
+*) Sys::Filesystem
+*) File::Which
+
+Debian
+------
+
+Etch:
+
+apt-get install libfile-which-perl dh-make-perl
+dh-make-perl --install --CPAN Sys::Filesystem
+dh-make-perl --install --CPAN Linux::LVM
+
+
+Lenny:
+
+apt-get install liblinux-lvm-perl libfile-which-perl dh-make-perl
+dh-make-perl --install --CPAN Sys::Filesystem
+
+
+Usage
+=====
+
+./snapshotter --help

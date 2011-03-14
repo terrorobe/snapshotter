@@ -4,27 +4,23 @@ snapshotter is a LVM-based tool which helps you to automatically create a snapsh
 
 It turns
 
-{{{
-/dev/mapper/vg-root on / type ext3 (rw,noatime,errors=remount-ro)
-/dev/sda1 on /boot type ext2 (rw, noatime)
-/dev/mapper/raid5-vzprivate on /var/lib/vz/private type ext3 (rw,noatime)
-}}}
+	/dev/mapper/vg-root on / type ext3 (rw,noatime,errors=remount-ro)
+	/dev/sda1 on /boot type ext2 (rw, noatime)
+	/dev/mapper/raid5-vzprivate on /var/lib/vz/private type ext3 (rw,noatime)
 
 into
 
-{{{
-/dev/mapper/vg-SNAProot on /mnt/backup type ext3 (rw)
-/dev/mapper/raid5-SNAPvzprivate on /mnt/backup/var/lib/vz/private type ext3 (rw)
-/boot on /mnt/backup/boot type none (rw,bind)
-}}}
+	/dev/mapper/vg-SNAProot on /mnt/backup type ext3 (rw)
+	/dev/mapper/raid5-SNAPvzprivate on /mnt/backup/var/lib/vz/private type ext3 (rw)
+	/boot on /mnt/backup/boot type none (rw,bind)
 
 
 This means that it
 
-*) Create the directory for the mountpoint /mnt/backup
-*) Create snapshots of the "root" and "srv" logical volumes
-*) Mount the snapshots in /mnt/backup and /mnt/backup/srv respectively
-*) Bind-Mount /boot to /mnt/backup/boot
+* Create the directory for the mountpoint /mnt/backup
+* Create snapshots of the "root" and "srv" logical volumes
+* Mount the snapshots in /mnt/backup and /mnt/backup/srv respectively
+* Bind-Mount /boot to /mnt/backup/boot
 
 providing /mnt/backup as an almost atomic snapshot of the current filesystem tree.
 
@@ -47,15 +43,11 @@ Since /boot resides on a non-LVM blockdevice it can only be bind-mounted in the 
 
 Create snapshot of current filesystem tree in /mnt/snapshotbackup excluding /srv/backup:
 
-{{{
-snapshotter snapshot /mnt/snapshotbackup --exclude-mountpoints=/srv/backup
-}}}
+	snapshotter snapshot /mnt/snapshotbackup --exclude-mountpoints=/srv/backup
 
 Cleaning it up after backup finishes:
 
-{{{
-snapshotter teardown /mnt/snapshotbackup
-}}}
+	snapshotter teardown /mnt/snapshotbackup
 
 ## Requirements
 
@@ -70,20 +62,16 @@ snapshotter teardown /mnt/snapshotbackup
 
 ## Installation Instructions
 
-snapshotter is currently only available via mercurial, to get the most recent stable version use
+snapshotter is currently only available via github, to get the most recent stable version use
 
-{{{
-hg clone https://workbench.amd.co.at/hg/snapshotter/
-}}}
+	git clone https://terrorobe@github.com/terrorobe/snapshotter.git
 
 ### Debian
 
 #### Lenny
 
-{{{
-apt-get install liblinux-lvm-perl libfile-which-perl dh-make-perl
-dh-make-perl --install --CPAN Sys::Filesystem
-}}}
+	apt-get install liblinux-lvm-perl libfile-which-perl dh-make-perl
+	dh-make-perl --install --CPAN Sys::Filesystem
 
 
 ## Caveats

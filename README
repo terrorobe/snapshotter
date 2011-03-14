@@ -1,4 +1,4 @@
-= snapshotter =
+# snapshotter
 
 snapshotter is a LVM-based tool which helps you to automatically create a snapshot of your complete mounted filesystem tree which you then can use as source for consistent backups.
 
@@ -18,23 +18,32 @@ into
 /boot on /mnt/backup/boot type none (rw,bind)
 }}}
 
+
+This means that it
+
+*) Create the directory for the mountpoint /mnt/backup
+*) Create snapshots of the "root" and "srv" logical volumes
+*) Mount the snapshots in /mnt/backup and /mnt/backup/srv respectively
+*) Bind-Mount /boot to /mnt/backup/boot
+
 providing /mnt/backup as an almost atomic snapshot of the current filesystem tree.
 
-=== almost? ===
+
+### almost?
 
 There are two problems in the above example:
 
 
-==== Snapshot creation ====
+#### Snapshot creation
 
 There's a slight time window between the creation of the snapshots of the root and vzprivate volume, since the creation of snapshot volumes takes a few seconds, depending on hardware and system load.
 
 
-==== Bind mount ====
+#### Bind mount
 
 Since /boot resides on a non-LVM blockdevice it can only be bind-mounted in the backup tree, meaning that any changes on the underlying filesystem is instantly reflected in the bind mount.
 
-== Example Usage ==
+## Example Usage
 
 Create snapshot of current filesystem tree in /mnt/snapshotbackup excluding /srv/backup:
 
@@ -48,7 +57,7 @@ Cleaning it up after backup finishes:
 snapshotter teardown /mnt/snapshotbackup
 }}}
 
-== Requirements ==
+## Requirements
 
   * lvm2
   * Perl 5.8 or later
@@ -59,7 +68,7 @@ snapshotter teardown /mnt/snapshotbackup
 
 
 
-== Installation Instructions ==
+## Installation Instructions
 
 snapshotter is currently only available via mercurial, to get the most recent stable version use
 
@@ -67,17 +76,9 @@ snapshotter is currently only available via mercurial, to get the most recent st
 hg clone https://workbench.amd.co.at/hg/snapshotter/
 }}}
 
-=== Debian ===
+### Debian
 
-==== Etch ====
-
-{{{
-apt-get install libfile-which-perl dh-make-perl
-dh-make-perl --install --CPAN Sys::Filesystem
-dh-make-perl --install --CPAN Linux::LVM
-}}}
-
-==== Lenny ====
+#### Lenny
 
 {{{
 apt-get install liblinux-lvm-perl libfile-which-perl dh-make-perl
@@ -85,7 +86,7 @@ dh-make-perl --install --CPAN Sys::Filesystem
 }}}
 
 
-== Caveats ==
+## Caveats
 
   * Linux::LVM is currently a bit verbose. An upstream bug report has already been filed.
   * snapshotter requires free space in any used volume group to work.

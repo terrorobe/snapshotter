@@ -17,10 +17,10 @@ into
 
 This means that it
 
-* Create the directory for the mountpoint /mnt/backup
-* Create snapshots of the "root" and "srv" logical volumes
-* Mount the snapshots in /mnt/backup and /mnt/backup/srv respectively
-* Bind-Mount /boot to /mnt/backup/boot
+* Creates the directory for the mountpoint /mnt/backup
+* Creates snapshots of the "root" and "srv" logical volumes
+* Mounts the snapshots in /mnt/backup and /mnt/backup/srv respectively
+* Bind-Mounts /boot to /mnt/backup/boot
 
 providing /mnt/backup as an almost atomic snapshot of the current filesystem tree.
 
@@ -37,7 +37,7 @@ There's a slight time window between the creation of the snapshots of the root a
 
 #### Bind mount
 
-Since /boot resides on a non-LVM blockdevice it can only be bind-mounted in the backup tree, meaning that any changes on the underlying filesystem is instantly reflected in the bind mount.
+Since /boot resides on a non-LVM blockdevice it can only be bind-mounted in the backup tree, meaning that any changes on the underlying filesystem are instantly reflected in the bind mount.
 
 ## Example Usage
 
